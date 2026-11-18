@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated data and trained models (recreate them by running the pipeline)
+data/processed/*
+!data/processed/.gitkeep
+models/*
+!models/.gitkeep
+
+# Experiment tracking, caches and secrets
+mlruns/
+.pytest_cache/
+.cache/
+.env
+.streamlit/secrets.toml
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

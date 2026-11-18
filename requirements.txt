@@ -1,0 +1,18 @@
+# Core packages: data, classical models, charts, UI and tests.
+# Install with:  pip install -r requirements.txt
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+plotly
+wordcloud
+nltk
+joblib
+jupyter
+streamlit
+pytest
+
+# Installs this repository's own code (src/newsclf) so notebooks, scripts
+# and the app can all run "from newsclf import ...". Keep this line last.
+-e .

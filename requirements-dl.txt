@@ -1,0 +1,12 @@
+# Deep learning packages for the modern models and explainability (T10, T11, T18).
+# Large download (PyTorch alone is several hundred MB), so install only when needed:
+#   pip install -r requirements-dl.txt
+# DistilBERT fine-tuning (T11) runs on Google Colab, which already has most of these.
+-r requirements.txt
+torch
+transformers
+datasets
+accelerate
+sentence-transformers
+lime
+shap

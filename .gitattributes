@@ -1,0 +1,6 @@
+# Normalise line endings for code and text files
+* text=auto
+
+# Never touch line endings inside the dataset: the post texts contain line
+# breaks, and converting them on Windows would change the data between machines
+*.csv -text
