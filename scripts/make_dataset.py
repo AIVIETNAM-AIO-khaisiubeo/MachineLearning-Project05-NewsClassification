@@ -1,0 +1,159 @@
+"""Build the cleaned data set (task T5).
+
+Run from the repository root:
+
+    python scripts/make_dataset.py
+
+Reads   data/raw/newsgroup_posts.csv
+Writes  data/processed/clean.csv      the cleaned posts that every model uses (not in git)
+        data/processed/dropped.csv    the removed posts with the reason, to check by eye (not in git)
+        reports/cleaning_summary.md   posts removed per step, per newsgroup and per topic
+                                      group (in git: the numbers for the report)
+
+The rules are explained in reports/cleaning_decisions.md and implemented in
+src/newsclf/clean.py. Task T6 adds the train/validation/test split to this script.
+"""
+
+import numbers
+
+import pandas as pd
+
+from newsclf.clean import DROP_REASONS, EMAIL_TOKEN, URL_TOKEN, clean_posts, count_words
+from newsclf.config import (
+    CLEAN_DATA_PATH,
+    ID_COL,
+    PROCESSED_DIR,
+    RAW_DATA_PATH,
+    REPORTS_DIR,
+    ROOT_DIR,
+    TARGET_6,
+    TARGET_20,
+    TEXT_COL,
+    set_seed,
+)
+
+DROPPED_DATA_PATH = PROCESSED_DIR / "dropped.csv"
+SUMMARY_PATH = REPORTS_DIR / "cleaning_summary.md"
+
+# Posts longer than this are cut by a transformer with a 512-token limit (notebook 5.2)
+TRANSFORMER_WORD_LIMIT = 400
+
+
+def load_raw(path=RAW_DATA_PATH) -> pd.DataFrame:
+    """Read the raw CSV. keep_default_na=False: a post whose whole text is "NA" or "None"
+    stays text instead of becoming a missing value; an empty field is read as ""."""
+    return pd.read_csv(path, keep_default_na=False)
+
+
+# ---------------------------------------------------------------------------
+# Summary tables
+# ---------------------------------------------------------------------------
+def steps_table(raw: pd.DataFrame, dropped: pd.DataFrame) -> pd.DataFrame:
+    """How many posts each cleaning step removed, in the order of the steps."""
+    rows = [("Rows in the raw file", len(raw))]
+    for reason in DROP_REASONS:
+        rows.append((f"Dropped: {reason}", int((dropped["reason"] == reason).sum())))
+    rows.append(("Dropped in total", len(dropped)))
+    rows.append(("Kept in clean.csv", len(raw) - len(dropped)))
+    table = pd.DataFrame(rows, columns=["step", "posts"])
+    table["% of raw"] = table["posts"] / len(raw) * 100
+    return table
+
+
+def text_changes_table(raw: pd.DataFrame, clean: pd.DataFrame) -> pd.DataFrame:
+    """What the cleaning changed inside the kept posts."""
+    raw_text = raw.set_index(ID_COL).loc[clean[ID_COL], TEXT_COL]
+    words_before = int(raw_text.apply(count_words).sum())
+    words_after = clean[TEXT_COL].apply(count_words)
+    rows = [
+        ("Words in the kept posts before cleaning", words_before),
+        ("Words in the kept posts after cleaning", int(words_after.sum())),
+        ("Words removed (%)", (1 - words_after.sum() / words_before) * 100),
+        (f"Kept posts with an `{EMAIL_TOKEN}` token", int(clean[TEXT_COL].str.contains(EMAIL_TOKEN).sum())),
+        (f"Kept posts with a `{URL_TOKEN}` token", int(clean[TEXT_COL].str.contains(URL_TOKEN).sum())),
+        ("Shortest kept post (words)", int(words_after.min())),
+        ("Median kept post (words)", int(words_after.median())),
+        ("Longest kept post (words), no upper limit", int(words_after.max())),
+        (f"Kept posts with more than {TRANSFORMER_WORD_LIMIT} words (cut by a 512-token transformer)",
+         int((words_after > TRANSFORMER_WORD_LIMIT).sum())),
+    ]
+    # dtype=object keeps whole numbers as whole numbers (otherwise pandas turns them into floats)
+    return pd.DataFrame(rows, columns=["measure", "value"], dtype=object)
+
+
+def kept_per_class_table(raw: pd.DataFrame, clean: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Posts per class before and after cleaning, lowest share kept first."""
+    table = pd.DataFrame({"raw": raw[column].value_counts(), "kept": clean[column].value_counts()})
+    table["% kept"] = table["kept"] / table["raw"] * 100
+    table["share of raw %"] = table["raw"] / len(raw) * 100
+    table["share of clean %"] = table["kept"] / len(clean) * 100
+    return table.sort_values(["% kept", "raw"]).rename_axis(column).reset_index()
+
+
+def format_cell(value) -> str:
+    """Whole numbers with thousands separators, other numbers with one decimal."""
+    if isinstance(value, numbers.Integral):
+        return f"{value:,}"
+    if isinstance(value, numbers.Real):
+        return f"{value:.1f}"
+    return str(value)
+
+
+def markdown_table(table: pd.DataFrame) -> str:
+    """A table in Markdown (pandas' own to_markdown needs an extra package)."""
+    lines = ["| " + " | ".join(table.columns) + " |", "|" + "---|" * len(table.columns)]
+    for row in table.itertuples(index=False):
+        lines.append("| " + " | ".join(format_cell(value) for value in row) + " |")
+    return "\n".join(lines)
+
+
+def build_summary(raw: pd.DataFrame, clean: pd.DataFrame, dropped: pd.DataFrame) -> str:
+    """The text of reports/cleaning_summary.md."""
+    sections = [
+        "# Cleaning summary (T5)",
+        "Generated by `python scripts/make_dataset.py` from `data/raw/newsgroup_posts.csv`. "
+        "Do not edit by hand: run the script again instead. The rules are explained in "
+        "`reports/cleaning_decisions.md` and implemented in `src/newsclf/clean.py`.",
+        "## 1. Posts removed per step",
+        markdown_table(steps_table(raw, dropped)),
+        "## 2. Changes inside the kept posts",
+        markdown_table(text_changes_table(raw, clean)),
+        "## 3. Posts per topic group (6 classes)",
+        markdown_table(kept_per_class_table(raw, clean, TARGET_6)),
+        "## 4. Posts per newsgroup (20 classes), lowest share kept first",
+        markdown_table(kept_per_class_table(raw, clean, TARGET_20)),
+    ]
+    return "\n\n".join(sections) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main() -> None:
+    set_seed()  # the cleaning itself has no randomness, but the split (T6) will
+
+    raw = load_raw()
+    print(f"Read {len(raw):,} posts from {RAW_DATA_PATH.relative_to(ROOT_DIR)}")
+
+    clean, dropped = clean_posts(raw)
+
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    # lineterminator="\n": the same file bytes on Windows, macOS and Linux
+    clean.to_csv(CLEAN_DATA_PATH, index=False, lineterminator="\n")
+    dropped.to_csv(DROPPED_DATA_PATH, index=False, lineterminator="\n")
+
+    summary = build_summary(raw, clean, dropped)
+    SUMMARY_PATH.write_text(summary, encoding="utf-8", newline="\n")
+
+    print()
+    print(markdown_table(steps_table(raw, dropped)))
+    print()
+    print(f"Saved {len(clean):,} cleaned posts to {CLEAN_DATA_PATH.relative_to(ROOT_DIR)}")
+    print(f"Saved {len(dropped):,} dropped posts to {DROPPED_DATA_PATH.relative_to(ROOT_DIR)}")
+    print(f"Saved the summary to {SUMMARY_PATH.relative_to(ROOT_DIR)}")
+
+    # T6: split `clean` into train/validation/test here and save the post_id lists to data/splits/
+
+
+if __name__ == "__main__":
+    main()

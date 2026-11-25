@@ -31,10 +31,12 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT_DIR / "data"
 RAW_DATA_PATH = DATA_DIR / "raw" / "newsgroup_posts.csv"  # original file, never edit it
 PROCESSED_DIR = DATA_DIR / "processed"  # cleaned data (T5), can be regenerated
+CLEAN_DATA_PATH = PROCESSED_DIR / "clean.csv"  # output of scripts/make_dataset.py, input of every model
 SPLITS_DIR = DATA_DIR / "splits"  # train/val/test post_id lists (T6), committed to git
 
 MODELS_DIR = ROOT_DIR / "models"  # trained models (T12), not committed to git
-FIGURES_DIR = ROOT_DIR / "reports" / "figures"  # charts for the report
+REPORTS_DIR = ROOT_DIR / "reports"  # written decisions and summaries for the report
+FIGURES_DIR = REPORTS_DIR / "figures"  # charts for the report
 
 # ---------------------------------------------------------------------------
 # Dataset columns

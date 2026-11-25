@@ -29,6 +29,15 @@ Every line of `check_setup.py` should show `OK` (deep learning packages show `SK
 
 ## Running the project
 
+Run every command from the repository root.
+
+**1. Build the cleaned data set (T5).** Applies the rules in `reports/cleaning_decisions.md` and writes `data/processed/clean.csv`, which every model uses:
+
+```bash
+python scripts/make_dataset.py
+pytest tests/test_clean.py      # optional: check the cleaning rules
+```
+
 TODO (T26): how to run training and how to start the UI.
 
 ## Project structure
